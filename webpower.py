@@ -16,43 +16,70 @@ ch = logging.StreamHandler()
 logger.addHandler(ch)
 logger.setLevel(logging.INFO)
 
-
+#bin(int('ff', base=16))[2:]
 class WebPowerSwitch(object):
 	"""docstring for WebPowerSwitch"""
 	def __init__(self):
 		super(WebPowerSwitch, self).__init__()
 		self.base_url = "http://admin:seebeck10@10.0.1.67/"
-		self.outlet = [False,False,False,False,False,False,False,False,False]
-		self.get_states()
+		self.outlets = [False,False,False,False,False,False,False,False]
+		self.get_outlet_states()
+		print("outlet states: {}".format(self.outlets))
 
-	def byte_to_binary(self,n):
-		return ''.join(str((n & (1 << i)) and 1) for i in (range(8)))
+	def int_to_bit_list(self,h):
+		states = []
+		for i in reversed(bin(h)[2:].zfill(8)):
+			states.append(bool(int(i)))
+		return states
 
-	def hex_to_binary(self,h):
-		return ''.join(self.byte_to_binary(ord(b)) for b in binascii.unhexlify(h))
+	def str_to_int(self,hex_str):
+		return int(hex_str, 16)
 
-	def get_states(self):
+	def str_to_bit_list(self,hex_str):
+		return self.int_to_bit_list(self.str_to_int(hex_str))
+
+	def get_hex_state(self):
 		r = requests.get(self.base_url + 'index.htm')
 		m = re.search("<!-- state=(\S\S) lock=(\S\S) -->",r.text)
-		on_states = self.hex_to_binary(m.group(1))
-		lock_states = self.hex_to_binary(m.group(2))
-
-		self.outlet[0] = on_states
-		self.outlet[1] = bool(int(on_states[0]))
-		self.outlet[2] = bool(int(on_states[1]))
-		self.outlet[3] = bool(int(on_states[2]))
-		self.outlet[4] = bool(int(on_states[3]))
-		self.outlet[5] = bool(int(on_states[4]))
-		self.outlet[6] = bool(int(on_states[5]))
-		self.outlet[7] = bool(int(on_states[6]))
-		self.outlet[8] = bool(int(on_states[7]))
-		return on_states
+		print("Hex state: {}".format(m.group(1)))
+		return(m.group(1))
 
 	def set_outlet(self,outlet,state):
 		if state == True:
 			state="ON"
 		elif state == False:
 			state="OFF"
+		print("Setting outlet {}: {}".format(str(outlet),state))
 		requests.get(self.base_url + "outlet", params={str(outlet):state})
-		return self.get_states()
+		return self.get_outlet_states()
+
+	def get_outlet_states(self):
+		self.outlets = self.str_to_bit_list(self.get_hex_state())
+		return self.outlets
+
+	def set_outlet_states(self,hex_str):
+		new_states = self.str_to_bit_list(hex_str)
+		current_states = self.get_outlet_states()
+
+		print("current\t\t: {}".format(current_states))
+		print("new\t\t: {}".format(new_states))
+		
+		for i,v in enumerate(new_states):
+			v = bool(int(v))
+			outlet_num = int(i) + 1
+			print("{} == {}".format(bool(current_states[i]), v))
+			if v != bool(current_states[i]):
+				print("asking outlet num {} to be {}".format(outlet_num,v))
+				self.set_outlet(outlet_num,v)
+		return(self.get_outlet_states())
+
+	def cycle_outlet_states(self,hex_str):
+
+		swap_states = self.str_to_int(hex_str)
+		current_states = self.str_to_int(self.get_hex_state())
+		new_states = swap_states ^ current_states
+		print("cycle states: {}".format(new_states))
+		new_state_str = hex(new_states)[2:]
+		res = self.set_outlet_states(new_state_str)
+		return(res)
 
